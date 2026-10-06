@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>FZ-S Logbook</title>
+<style>
+:root{--bg:#eef1f5;--card:#fff;--ink:#14202e;--mut:#5d6b7c;--line:#d8dee6;--acc:#0b4fb3;--onacc:#fff;--bad:#b3261e;--ok:#1b7f45}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1620;--card:#172230;--ink:#e8eef5;--mut:#92a1b3;--line:#27384a;--acc:#5aa2ff;--onacc:#06121f;--bad:#ff8a80;--ok:#6fd49a}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,sans-serif}
+body{overflow-x:hidden;padding-bottom:76px}
+header{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+.pill{font-size:12px;padding:4px 10px;border-radius:99px;border:1px solid var(--line);color:var(--mut)}
+.pill.synced,.pill.github{color:var(--ok);border-color:var(--ok)}
+.pill.unsaved{color:var(--bad);border-color:var(--bad)}
+main{padding:12px;max-width:640px;margin:auto}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line)}
+nav button{flex:1;border:0;background:none;color:var(--mut);padding:8px 0;font-size:20px;min-height:56px}
+nav button small{display:block;font-size:11px}
+nav button.on{color:var(--acc);font-weight:700}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;overflow-wrap:anywhere}
+.big{font-size:26px;font-weight:700}
+.lbl{color:var(--mut);font-size:13px}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+h2{margin:6px 0 10px;font-size:20px}
+button.b,.b{background:var(--acc);color:var(--onacc);border:0;border-radius:10px;padding:12px 16px;font-size:16px;min-height:48px}
+button.s{background:none;color:var(--acc);border:1px solid var(--acc)}
+button.d{background:none;color:var(--bad);border:1px solid var(--bad)}
+.acts{display:flex;gap:8px;margin-top:10px}.acts button{flex:1;padding:10px;min-height:44px}
+input,select,textarea{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);min-height:48px}
+label{display:block;margin-bottom:10px;font-size:14px;color:var(--mut)}
+.filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.filters .w{grid-column:1/3}
+#modal{position:fixed;inset:0;z-index:10;background:var(--bg);overflow-y:auto;padding:12px;padding-bottom:40px}
+#toast{position:fixed;left:12px;right:12px;bottom:84px;z-index:20;background:var(--ink);color:var(--bg);padding:12px;border-radius:10px}
+#toast.err{background:var(--bad);color:#fff}
+.tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);margin:2px 4px 2px 0}
+.chk{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.chk label{margin:0}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)}
+.kv span:first-child{color:var(--mut)}
+.empty{color:var(--mut);text-align:center;padding:24px}
+.item>*{margin-bottom:8px}.item>button{margin-bottom:0;width:100%}
+.item{display:grid;grid-template-columns:1.25fr 1fr .8fr 40px;gap:6px;margin-bottom:8px;align-items:center}.item select,.item input{padding:8px 4px;font-size:14px;min-width:0}.item .in{grid-column:1/-1}.item .x{padding:0;min-height:40px;width:40px}.item.hd{font-size:12px;color:var(--mut);margin-bottom:2px}
+.item>*{margin-bottom:0}
+main>.row{margin-bottom:12px}
+
+</style>
+</head>
+<body>
+<header><b>FZ-S V2 Logbook <small>v6</small></b><span id="st" class="pill">Local</span></header>
+<main id="main"></main>
+<nav>
+<button data-v="dash" onclick="go('dash')">🏠<small>Home</small></button>
+<button data-v="fuel" onclick="go('fuel')">⛽<small>Fuel</small></button>
+<button data-v="services" onclick="go('services')">🔧<small>Services</small></button>
+<button data-v="repairs" onclick="go('repairs')">🛠️<small>Repairs</small></button>
+<button data-v="more" onclick="go('more')">☰<small>More</small></button>
+</nav>
+<div id="modal" hidden></div>
+<div id="toast" hidden></div>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = v => (v === '' || v == null || isNaN(+v)) ? null : +v;
+const fmt = (n, d = 0) => (n == null || isNaN(n)) ? '–' : Number(n).toLocaleString('en-IN', {maximumFractionDigits: d});
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const today = () => new Date().toISOString().slice(0, 10);
+const dfmt = d => d ? new Date(d + 'T00:00').toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'}) : '–';
+const empty = () => ({version: 1, bike: {name: 'My Yamaha FZ-S V2'}, fuel: [], services: [], repairs: []});
+const TYPES = ['fuel', 'services', 'repairs'];
+const NAMES = {fuel: 'Fuel', services: 'Services', repairs: 'Repairs'};
+const COMP = ['Sprockets','Oil Filter','Air Filter','Cables','Battery','Spark Plug','Engine Oil','Chain','Brake Pads','Tyres','Other'];
+const ST = ['Checked','Changed','Serviced','N/A'];
+const RT = ['Engine related','Fuel related','Oil related','Tyre related','Electrical related','Brake related','Chain / transmission related','Suspension related','Other'];
+const F = {
+  fuel: [['date','Date of refill','date'],['odo','Mileage before refill (km)','number'],['litres','Litres refilled','number'],['total','Total cost (Rs.)','number']],
+  services: [['date','Date','date'],['odo','Mileage before service (km)','number'],['cost','Service cost (Rs.)','number']],
+  repairs: [['date','Date','date'],['odo','Mileage before repair (km)','number'],['rtype','Type of repair','select',RT],['note','Summary of the repair','textarea'],['cost','Total cost (Rs.)','number']]
+};
+const itemName = i => (i.comp === 'Other' && i.name) ? i.name : i.comp;
+const label = (t, r) => t === 'fuel' ? `${fmt(r.litres, 2)} L · Rs. ${fmt(r.total)}` : t === 'services' ? `Service · ${dfmt(r.date)}` : (r.rtype || 'Repair');
+
+let data = empty(), view = 'dash', status = 'local';
+let f = {q: '', from: '', to: '', min: '', max: '', sort: 'new', type: 'all'};
+const cfg = () => { try { return JSON.parse(localStorage.fz_cfg || '{}'); } catch { return {}; } };
+const cache = () => localStorage.setItem('fz_data', JSON.stringify(data));
+try { const c = localStorage.getItem('fz_data'); if (c) data = Object.assign(empty(), JSON.parse(c)); } catch {}
+
+function setSt(s) { status = s; const e = $('#st'); e.className = 'pill ' + s; e.textContent = {local: 'Local / offline', github: 'Connected to GitHub', unsaved: 'Unsaved changes', synced: 'Synced'}[s]; if (s === 'unsaved') localStorage.fz_dirty = '1'; if (s === 'synced') localStorage.removeItem('fz_dirty'); }
+function toast(m, err) { const t = $('#toast'); t.textContent = m; t.className = err ? 'err' : ''; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, err ? 6000 : 2500); }
+const enc = s => btoa(unescape(encodeURIComponent(s)));
+const dec = s => decodeURIComponent(escape(atob(s.replace(/\s/g, ''))));
+
+// ---------- GitHub ----------
+async function api(method, body) {
+  const c = cfg();
+  if (!c.user || !c.repo || !c.token) throw Object.assign(new Error('Add your GitHub details in More → Settings.'), {status: 0});
+  const path = (c.path || 'data/logbook.json').split('/').map(encodeURIComponent).join('/');
+  const u = `https://api.github.com/repos/${encodeURIComponent(c.user)}/${encodeURIComponent(c.repo)}/contents/${path}` + (method === 'GET' ? `?ref=${encodeURIComponent(c.branch || 'main')}&_=${Date.now()}` : '');
+  let r;
+  try {
+    r = await fetch(u, {method, cache: 'no-store', headers: {Authorization: 'Bearer ' + c.token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}, body: body ? JSON.stringify(body) : undefined});
+  } catch { throw Object.assign(new Error('Network failure: you appear to be offline. Changes are kept on this phone.'), {status: -1}); }
+  if (r.ok) return r.json();
+  const s = r.status; let m = 'GitHub error ' + s;
+  if (s === 401) m = 'Invalid or expired token. Create a new one in GitHub and update Settings.';
+  else if (s === 403) m = r.headers.get('x-ratelimit-remaining') === '0' ? 'GitHub rate limit reached. Try again later.' : 'No access: the token needs Contents read & write on this repository.';
+  else if (s === 404) m = body ? 'Repository or branch not found. Check username, repo and branch.' : 'File, repository or branch not found. A missing file is created on first save.';
+  else if (s === 409 || s === 422) m = 'Conflict: the file changed on GitHub (stale SHA) or the branch is wrong.';
+  throw Object.assign(new Error(m), {status: s});
+}
+
+async function pull() {
+  if (localStorage.fz_dirty && !confirm('Unsynced local changes exist. Replace them with the GitHub version?')) return;
+  try {
+    const j = await api('GET');
+    data = Object.assign(empty(), JSON.parse(dec(j.content)));
+    cache(); setSt('synced'); toast('Loaded from GitHub');
+  } catch (e) {
+    if (e.status === 404 && cfg().token) { setSt('github'); toast('Not found on GitHub yet: it will be created on first save.', 1); }
+    else { if (e.status !== 0) toast(e.message, 1); }
+  }
+  render();
+}
+
+// Applies `mutate` to local data, then to the freshest remote copy using its current SHA.
+async function commit(mutate, msg) {
+  mutate(data); cache(); setSt('unsaved'); render();
+  if (!cfg().token) { toast('Saved on this phone only. Add GitHub details to sync.'); return; }
+  for (let i = 0; i < 2; i++) {
+    try {
+      let remote = empty(), sha;
+      try { const j = await api('GET'); remote = Object.assign(empty(), JSON.parse(dec(j.content))); sha = j.sha; } catch (e) { if (e.status !== 404) throw e; }
+      mutate(remote);
+      await api('PUT', {message: msg, content: enc(JSON.stringify(remote, null, 2)), branch: cfg().branch || 'main', ...(sha ? {sha} : {})});
+      data = remote; cache(); setSt('synced'); toast('Saved to GitHub'); render(); return;
+    } catch (e) {
+      if (e.status === 409 && i === 0) continue;
+      toast(e.message + ' (kept locally)', 1); return;
+    }
+  }
+}
+
+// ---------- calculations ----------
+function fuelCalc() {
+  // Litres put in at a refill are measured over the distance driven until the NEXT refill.
+  const L = [...data.fuel].filter(r => r.odo != null).sort((a, b) => a.odo - b.odo), m = {};
+  L.forEach((r, i) => { if (i === L.length - 1) return; const d = L[i + 1].odo - r.odo; m[r.id] = {dist: d, kmpl: d > 0 && r.litres > 0 ? d / r.litres : null}; });
+  return m;
+}
+const maxOdo = () => Math.max(0, ...TYPES.flatMap(t => data[t].map(r => r.odo || 0)));
+// ---------- views ----------
+function go(v) { view = v; if (v !== 'search') f = {q: '', from: '', to: '', min: '', max: '', sort: 'new', type: 'all'}; render(); window.scrollTo(0, 0); }
+function render() {
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === (view === 'search' ? 'more' : view)));
+  const m = $('#main');
+  if (view === 'dash') m.innerHTML = dash();
+  else if (view === 'more') m.innerHTML = more();
+  else { m.innerHTML = `<div class="row"><h2>${view === 'search' ? 'Search all' : NAMES[view]}</h2>${view === 'search' ? '' : `<button class="b" onclick="openForm('${view}')">+ Add</button>`}</div>` + filterBar() + '<div id="list"></div>'; $('#list').innerHTML = listHTML(); }
+}
+function dash() {
+  const fc = fuelCalc(), fl = [...data.fuel].filter(r => r.odo != null).sort((a, b) => a.odo - b.odo);
+  const litres = data.fuel.reduce((a, r) => a + (r.litres || 0), 0), cost = data.fuel.reduce((a, r) => a + (r.total || 0), 0);
+  let dist = 0, lit = 0, cst = 0; fl.forEach(r => { if (fc[r.id] && fc[r.id].dist > 0 && r.litres > 0) { dist += fc[r.id].dist; lit += r.litres; cst += r.total || 0; } });
+  const last = fl.length > 1 ? fc[fl[fl.length - 2].id] : null;
+  const odo = maxOdo(), ls = [...data.services].sort((a, b) => (b.odo || 0) - (a.odo || 0))[0];
+  const c = (l, v, s = '') => `<div class="card"><div class="lbl">${l}</div><div class="big">${v}</div><div class="lbl">${s}</div></div>`;
+  const recent = TYPES.flatMap(t => data[t].map(r => ({t, r}))).sort((a, b) => (b.r.date || '').localeCompare(a.r.date || '') || (b.r.odo || 0) - (a.r.odo || 0)).slice(0, 5);
+  return `<div class="grid">${c('Odometer', fmt(odo) + ' km')}${c('Last fill economy', last && last.kmpl ? fmt(last.kmpl, 1) + ' km/L' : '–', last ? fmt(last.dist) + ' km' : '')}${c('Avg economy', dist ? fmt(dist / lit, 1) + ' km/L' : '–')}${c('Fuel used', fmt(litres, 1) + ' L')}${c('Fuel cost', 'Rs. ' + fmt(cost))}${c('Fuel cost / km', dist ? 'Rs. ' + fmt(cst / dist, 2) : '–')}${c('Last service', ls ? dfmt(ls.date) : '–', ls && ls.odo != null ? fmt(ls.odo) + ' km' : '')}${c('Since service', ls && ls.odo != null ? fmt(odo - ls.odo) + ' km' : '–')}${c('Services', data.services.length)}${c('Repairs', data.repairs.length)}</div><h2>Recent activity</h2>` +
+    (recent.length ? recent.map(({t, r}) => `<div class="card" onclick="openView('${t}','${r.id}')"><span class="tag">${NAMES[t]}</span> ${esc(label(t, r))}<div class="lbl">${dfmt(r.date)}${r.odo != null ? ' · ' + fmt(r.odo) + ' km' : ''}</div></div>`).join('') : '<div class="empty">No records yet. Add your first fuel refill.</div>');
+}
+function filterBar() {
+  if (view !== 'search') return `<div class="filters"><input class="w" placeholder="Search…" value="${esc(f.q)}" oninput="f.q=this.value;list()"></div>`;
+  return `<div class="filters"><input class="w" placeholder="Search…" value="${esc(f.q)}" oninput="f.q=this.value;list()">` +
+    (view === 'search' ? `<select class="w" onchange="f.type=this.value;list()"><option value="all">All record types</option>${TYPES.map(t => `<option value="${t}" ${f.type === t ? 'selected' : ''}>${NAMES[t]}</option>`).join('')}</select>` : '') +
+    `<input type="date" value="${f.from}" onchange="f.from=this.value;list()" aria-label="From date"><input type="date" value="${f.to}" onchange="f.to=this.value;list()" aria-label="To date">
+    <input type="number" inputmode="numeric" placeholder="Min km" value="${f.min}" oninput="f.min=this.value;list()"><input type="number" inputmode="numeric" placeholder="Max km" value="${f.max}" oninput="f.max=this.value;list()">
+    <select class="w" onchange="f.sort=this.value;list()">${[['new','Newest first'],['old','Oldest first'],['odoHi','Odometer high → low'],['odoLo','Odometer low → high']].map(o => `<option value="${o[0]}" ${f.sort === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>`;
+}
+const list = () => $('#list').innerHTML = listHTML();
+function listHTML() {
+  const ty = view === 'search' ? f.type : view, ts = ty === 'all' ? TYPES : [ty], fc = fuelCalc();
+  const L = ts.flatMap(t => data[t].map(r => ({t, r}))).filter(({r}) => (!f.q || JSON.stringify(r).toLowerCase().includes(f.q.toLowerCase())) && (!f.from || (r.date || '') >= f.from) && (!f.to || (r.date || '9') <= f.to) && (f.min === '' || r.odo >= +f.min) && (f.max === '' || r.odo <= +f.max));
+  const k = f.sort, cmpD = (a, b) => (b.r.date || '').localeCompare(a.r.date || '') || (b.r.odo || 0) - (a.r.odo || 0), cmpO = (a, b) => (b.r.odo || 0) - (a.r.odo || 0);
+  L.sort(k === 'odoHi' ? cmpO : k === 'odoLo' ? (a, b) => cmpO(b, a) : k === 'old' ? (a, b) => cmpD(b, a) : cmpD);
+  if (!L.length) return '<div class="empty">Nothing here yet.</div>';
+  return L.map(({t, r}) => {
+    let sub = `${dfmt(r.date)}${r.odo != null ? ' · ' + fmt(r.odo) + ' km' : ''}`;
+    if (t === 'fuel') sub += (r.litres && r.total ? ` · Rs. ${fmt(r.total / r.litres, 2)}/L` : '') + (fc[r.id] ? `<br>Drove ${fmt(fc[r.id].dist)} km · ${fc[r.id].kmpl ? fmt(fc[r.id].kmpl, 1) + ' km/L' : '–'}` : '<br>Efficiency shows after your next refill');
+    if (t === 'services') sub += `<br>Cost Rs. ${fmt(r.cost)}` + ((r.items || []).length ? '<br>' + r.items.map(i => esc(itemName(i)) + ' – ' + esc(i.status)).join(', ') : '');
+    if (t === 'repairs') sub += `<br>Rs. ${fmt(r.cost)}` + (r.note ? '<br>' + esc(r.note) : '');
+    return `<div class="card"><div class="row"><b>${view === 'search' ? `<span class="tag">${NAMES[t]}</span>` : ''}${esc(label(t, r))}</b></div><div class="lbl">${sub}</div>
+      <div class="acts"><button class="s" onclick="openView('${t}','${r.id}')">View</button><button class="s" onclick="openForm('${t}','${r.id}')">Edit</button><button class="d" onclick="del('${t}','${r.id}')">Delete</button></div></div>`;
+  }).join('');
+}
+function more() {
+  const c = cfg(), i = (id, l, v, t = 'text') => `<label>${l}<input id="${id}" type="${t}" value="${esc(v || '')}" autocomplete="off" autocapitalize="off"></label>`;
+  return `<h2>More</h2><button class="b" style="width:100%;margin-bottom:10px" onclick="go('search')">🔎 Search all records</button>
+  <div class="card"><b>GitHub settings</b><p class="lbl">Use a <b>private</b> repository and a <b>fine-grained</b> Personal Access Token limited to this one repository with only <b>Contents: Read and write</b>. The token stays in this browser and is never written to the repo.</p>
+  ${i('c_user', 'GitHub username', c.user)}${i('c_repo', 'Repository name', c.repo)}${i('c_branch', 'Branch', c.branch || 'main')}${i('c_path', 'JSON file path', c.path || 'data/logbook.json')}${i('c_token', 'Personal Access Token', c.token, 'password')}
+  <div class="acts"><button class="b" onclick="saveCfg()">Save settings</button><button class="s" onclick="saveCfg(true)">Sync now</button></div></div>
+  <div class="card"><b>Backup</b><div class="acts"><button class="s" onclick="exportJSON()">Export backup</button><button class="s" onclick="$('#imp').click()">Import backup</button></div><input id="imp" type="file" accept="application/json,.json" hidden onchange="importJSON(this.files[0])"></div>`;
+}
+function saveCfg(sync) {
+  localStorage.fz_cfg = JSON.stringify({user: $('#c_user').value.trim(), repo: $('#c_repo').value.trim(), branch: $('#c_branch').value.trim() || 'main', path: $('#c_path').value.trim() || 'data/logbook.json', token: $('#c_token').value.trim()});
+  toast('Settings saved'); if (sync) pull();
+}
+
+// ---------- records ----------
+function modal(h) { const m = $('#modal'); m.innerHTML = h; m.hidden = false; m.scrollTop = 0; }
+const closeModal = () => $('#modal').hidden = true;
+const itemRow = (it = {}) => `<div class="item"><select class="ic" onchange="this.parentNode.querySelector('.in').hidden=this.value!=='Other'">${COMP.map(c => `<option ${it.comp === c ? 'selected' : ''}>${c}</option>`).join('')}</select><select class="is">${ST.map(s => `<option ${it.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select><input class="ip" type="number" inputmode="decimal" step="any" placeholder="Rs." value="${esc(it.price)}"><button class="d x" onclick="this.parentNode.remove()" aria-label="Remove">✕</button><input class="in" placeholder="Component name (Other)" value="${esc(it.name)}" ${it.comp === 'Other' ? '' : 'hidden'}></div>`;
+const addItem = () => $('#items').insertAdjacentHTML('beforeend', itemRow());
+function openForm(t, id) {
+  const r = id ? data[t].find(x => x.id === id) : {date: today()};
+  const fld = ([k, l, ty, o]) => ty === 'textarea' ? `<label>${l}<textarea id="f_${k}" rows="3">${esc(r[k])}</textarea></label>` : ty === 'select' ? `<label>${l}<select id="f_${k}">${o.map(x => `<option ${r[k] === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>` : `<label>${l}<input id="f_${k}" type="${ty}" ${ty === 'number' ? 'inputmode="decimal" step="any"' : ''} value="${esc(r[k])}"></label>`;
+  const items = t === 'services' ? `<h2>Components</h2><div class="item hd"><span>Component</span><span>Status</span><span>Price</span><span></span></div><div id="items">${((r.items && r.items.length) ? r.items : [{}]).map(i => itemRow(i)).join('')}</div><button class="s" style="width:100%;margin-bottom:12px" onclick="addItem()">+ Add component</button>` : '';
+  modal(`<h2>${id ? 'Edit' : 'Add'} ${NAMES[t].toLowerCase()} record</h2>${F[t].map(fld).join('')}${t === 'fuel' ? '<label>Fuel efficiency (auto)<input id="f_eff" readonly></label>' : ''}${items}<div class="acts"><button class="s" onclick="closeModal()">Cancel</button><button class="b" id="sv" onclick="saveForm('${t}','${id || ''}')">Save</button></div>`);
+  if (t === 'fuel') { ['f_odo', 'f_litres'].forEach(i => $('#' + i).addEventListener('input', () => updEff(id))); updEff(id); }
+}
+function updEff(id) {
+  const odo = num($('#f_odo').value);
+  const prev = data.fuel.filter(x => x.id !== id && x.odo != null && odo != null && x.odo < odo).sort((a, b) => b.odo - a.odo)[0];
+  $('#f_eff').value = !prev ? 'No earlier refill to compare' : !(prev.litres > 0) ? '–' : `${fmt((odo - prev.odo) / prev.litres, 1)} km/L (${fmt(odo - prev.odo)} km on ${fmt(prev.litres, 2)} L from ${dfmt(prev.date)})`;
+}
+async function saveForm(t, id) {
+  const btn = $('#sv'); if (btn.disabled) return; btn.disabled = true;
+  const old = id ? data[t].find(x => x.id === id) : null, r = {...(old || {}), id: id || uid()};
+  F[t].forEach(([k, , ty]) => { const v = $('#f_' + k).value.trim(); r[k] = ty === 'number' ? num(v) : v; });
+  if (!r.date) { toast('Date is required', 1); btn.disabled = false; return; }
+  if (t === 'fuel' && !(r.odo != null && r.litres > 0)) { toast('Mileage and litres are required', 1); btn.disabled = false; return; }
+  if (t === 'services') r.items = [...document.querySelectorAll('#items .item')].map(e => ({comp: e.querySelector('.ic').value, name: e.querySelector('.in').value.trim(), status: e.querySelector('.is').value, price: num(e.querySelector('.ip').value.trim())}));
+  closeModal();
+  const nm = {fuel: 'fuel refill', services: 'service', repairs: 'repair'}[t];
+  await commit(d => { const a = d[t], i = a.findIndex(x => x.id === r.id); i < 0 ? a.push(r) : a[i] = r; }, `${id ? 'Edit' : 'Add'} ${nm}: ${label(t, r)}`);
+}
+async function del(t, id) {
+  const r = data[t].find(x => x.id === id);
+  if (!confirm(`Delete "${label(t, r)}"? This cannot be undone.`)) return;
+  await commit(d => { d[t] = d[t].filter(x => x.id !== id); }, `Delete ${t}: ${label(t, r)}`);
+}
+function openView(t, id) {
+  const r = data[t].find(x => x.id === id), fc = fuelCalc();
+  const kv = (l, v) => v == null || v === '' ? '' : `<div class="kv"><span>${l}</span><span>${esc(v)}</span></div>`;
+  let h = F[t].map(([k, l, ty]) => kv(l, ty === 'date' ? dfmt(r[k]) : ty === 'number' ? fmt(r[k], 2) : r[k])).join('');
+  if (t === 'fuel') h += (r.litres && r.total ? kv('Price per litre', 'Rs. ' + fmt(r.total / r.litres, 2)) : '') + (fc[id] ? kv('Distance driven on this fill', fmt(fc[id].dist) + ' km') + kv('Fuel economy', fc[id].kmpl ? fmt(fc[id].kmpl, 1) + ' km/L' : '–') : kv('Fuel economy', 'After your next refill'));
+  if (t === 'services') h += '<h2>Components</h2>' + ((r.items || []).map(i => kv(itemName(i), i.status + (i.price != null ? ' · Rs. ' + fmt(i.price) : ''))).join('') || '<div class="lbl">None added</div>');
+  modal(`<h2>${esc(label(t, r))}</h2><div class="card">${h}</div><div class="acts"><button class="s" onclick="closeModal()">Close</button><button class="b" onclick="openForm('${t}','${id}')">Edit</button></div>`);
+}
+
+// ---------- backup ----------
+function exportJSON() {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
+  a.download = `FZ_Logbook_${today()}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+async function importJSON(file) {
+  if (!file) return;
+  try {
+    const j = JSON.parse(await file.text());
+    if (!TYPES.every(t => Array.isArray(j[t] || []))) throw 0;
+    if (!confirm('Replace ALL current records with this backup?')) return;
+    TYPES.forEach(t => (j[t] = j[t] || []).forEach(r => { if (!r.id) r.id = uid(); }));
+    await commit(d => { TYPES.forEach(t => d[t] = j[t]); if (j.bike) d.bike = j.bike; }, 'Import backup');
+  } catch { toast('That file is not a valid logbook backup.', 1); }
+  $('#imp') && ($('#imp').value = '');
+}
+
+setSt(localStorage.fz_dirty ? 'unsaved' : 'local');
+render();
+if (cfg().token) pull();
+window.addEventListener('online', () => cfg().token && localStorage.fz_dirty && toast('Back online. Make a change or tap Sync now.'));
+
+</script>
+</body>
+</html>
