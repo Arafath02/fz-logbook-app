@@ -47,11 +47,14 @@ label{display:block;margin-bottom:10px;font-size:14px;color:var(--mut)}
 .item{display:grid;grid-template-columns:1.25fr 1fr .8fr 40px;gap:6px;margin-bottom:8px;align-items:center}.item select,.item input{padding:8px 4px;font-size:14px;min-width:0}.item .in{grid-column:1/-1}.item .x{padding:0;min-height:40px;width:40px}.item.hd{font-size:12px;color:var(--mut);margin-bottom:2px}
 .item>*{margin-bottom:0}
 main>.row{margin-bottom:12px}
+:root{--c-red:#c62828;--c-orange:#e65100;--c-blue:#1565c0;--c-purple:#6a1b9a;--c-green:#2e7d32;--c-teal:#00796b;--c-pink:#ad1457;--c-gold:#b26a00;--c-sky:#0277bd;--c-indigo:#3949ab}
+@media(prefers-color-scheme:dark){:root{--c-red:#ff6b6b;--c-orange:#ffa04d;--c-blue:#6ab0ff;--c-purple:#c792ea;--c-green:#5fd68a;--c-teal:#4dd0c4;--c-pink:#ff80ab;--c-gold:#ffd166;--c-sky:#4fc3f7;--c-indigo:#9fa8ff}}
+.c-red{color:var(--c-red)}.c-orange{color:var(--c-orange)}.c-blue{color:var(--c-blue)}.c-purple{color:var(--c-purple)}.c-green{color:var(--c-green)}.c-teal{color:var(--c-teal)}.c-pink{color:var(--c-pink)}.c-gold{color:var(--c-gold)}.c-sky{color:var(--c-sky)}.c-indigo{color:var(--c-indigo)}
 
 </style>
 </head>
 <body>
-<header><b>FZ-S V2 Logbook <small>v6</small></b><span id="st" class="pill">Local</span></header>
+<header><b>FZ-S V2 Logbook <small>v7</small></b><span id="st" class="pill">Local</span></header>
 <main id="main"></main>
 <nav>
 <button data-v="dash" onclick="go('dash')">🏠<small>Home</small></button>
@@ -169,9 +172,9 @@ function dash() {
   let dist = 0, lit = 0, cst = 0; fl.forEach(r => { if (fc[r.id] && fc[r.id].dist > 0 && r.litres > 0) { dist += fc[r.id].dist; lit += r.litres; cst += r.total || 0; } });
   const last = fl.length > 1 ? fc[fl[fl.length - 2].id] : null;
   const odo = maxOdo(), ls = [...data.services].sort((a, b) => (b.odo || 0) - (a.odo || 0))[0];
-  const c = (l, v, s = '') => `<div class="card"><div class="lbl">${l}</div><div class="big">${v}</div><div class="lbl">${s}</div></div>`;
+  const c = (l, v, s = '', k = '') => `<div class="card"><div class="lbl">${l}</div><div class="big ${k}">${v}</div><div class="lbl">${s}</div></div>`;
   const recent = TYPES.flatMap(t => data[t].map(r => ({t, r}))).sort((a, b) => (b.r.date || '').localeCompare(a.r.date || '') || (b.r.odo || 0) - (a.r.odo || 0)).slice(0, 5);
-  return `<div class="grid">${c('Odometer', fmt(odo) + ' km')}${c('Last fill economy', last && last.kmpl ? fmt(last.kmpl, 1) + ' km/L' : '–', last ? fmt(last.dist) + ' km' : '')}${c('Avg economy', dist ? fmt(dist / lit, 1) + ' km/L' : '–')}${c('Fuel used', fmt(litres, 1) + ' L')}${c('Fuel cost', 'Rs. ' + fmt(cost))}${c('Fuel cost / km', dist ? 'Rs. ' + fmt(cst / dist, 2) : '–')}${c('Last service', ls ? dfmt(ls.date) : '–', ls && ls.odo != null ? fmt(ls.odo) + ' km' : '')}${c('Since service', ls && ls.odo != null ? fmt(odo - ls.odo) + ' km' : '–')}${c('Services', data.services.length)}${c('Repairs', data.repairs.length)}</div><h2>Recent activity</h2>` +
+  return `<div class="grid">${c('Odometer', fmt(odo) + ' km', '', 'c-red')}${c('Last fill economy', last && last.kmpl ? fmt(last.kmpl, 1) + ' km/L' : '–', last ? fmt(last.dist) + ' km' : '', 'c-blue')}${c('Avg economy', dist ? fmt(dist / lit, 1) + ' km/L' : '–', '', 'c-orange')}${c('Fuel used', fmt(litres, 1) + ' L', '', 'c-purple')}${c('Fuel cost', 'Rs. ' + fmt(cost), '', 'c-green')}${c('Fuel cost / km', dist ? 'Rs. ' + fmt(cst / dist, 2) : '–', '', 'c-teal')}${c('Last service', ls ? dfmt(ls.date) : '–', ls && ls.odo != null ? fmt(ls.odo) + ' km' : '', 'c-pink')}${c('Since service', ls && ls.odo != null ? fmt(odo - ls.odo) + ' km' : '–', '', 'c-gold')}${c('Services', data.services.length, '', 'c-sky')}${c('Repairs', data.repairs.length, '', 'c-indigo')}</div><h2>Recent activity</h2>` +
     (recent.length ? recent.map(({t, r}) => `<div class="card" onclick="openView('${t}','${r.id}')"><span class="tag">${NAMES[t]}</span> ${esc(label(t, r))}<div class="lbl">${dfmt(r.date)}${r.odo != null ? ' · ' + fmt(r.odo) + ' km' : ''}</div></div>`).join('') : '<div class="empty">No records yet. Add your first fuel refill.</div>');
 }
 function filterBar() {
